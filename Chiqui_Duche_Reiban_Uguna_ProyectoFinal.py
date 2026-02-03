@@ -1,5 +1,5 @@
 
-# filepath: tello_altitude_hmi.py
+# TRABAJO realizado por: CHIQUI, DUCHE, REIBAN, UGUÑA
 
 from __future__ import annotations
 
@@ -146,7 +146,7 @@ def compute_settling_time(
 
 
 # -----------------------------
-# Estimar Tu por autocorrelación (para relay)
+# Estimacion del Tu
 # -----------------------------
 def estimate_tu_autocorr(t: np.ndarray, y: np.ndarray) -> Optional[float]:
     if len(t) < 150:
@@ -154,7 +154,6 @@ def estimate_tu_autocorr(t: np.ndarray, y: np.ndarray) -> Optional[float]:
     y = y.astype(float)
     y = y - np.mean(y)
 
-    # detrend leve
     x = np.linspace(-1.0, 1.0, len(y))
     p = np.polyfit(x, y, deg=1)
     y = y - (p[0] * x + p[1])
@@ -190,14 +189,14 @@ def estimate_tu_autocorr(t: np.ndarray, y: np.ndarray) -> Optional[float]:
 
 
 # -----------------------------
-# APP
+# Funciones de la interfaz
 # -----------------------------
 class TelloAltitudeApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("HMI Control de Altura - DJI Tello (PID + ZN)")
 
-        # Setpoint: ahora es DELTA sobre takeoff
+        # Setpoint: DELTA sobre takeoff
         self.SP_DELTA_MIN = 0.0
         self.SP_DELTA_MAX = 150.0
 
@@ -205,14 +204,13 @@ class TelloAltitudeApp:
         self.H_VALID_MIN = 5.0
         self.H_VALID_MAX = 300.0
 
-        # control authority
+        # control
         self.U_MIN = -100.0
         self.U_MAX = 100.0
 
         self.DT_CTRL = 0.10
         self.LOG_MAXLEN = 4000
 
-        # relay tuning params (robustos)
         self.relay_amp = 40.0      # d (cmd)
         self.relay_hyst = 1.0      # histéresis en cm
         self.relay_timeout_s = 45.0
@@ -221,37 +219,34 @@ class TelloAltitudeApp:
         self.tello: Optional[Tello] = None
         self.connected = False
         self.flying = False
-
-        # threads
-        self.mode = "IDLE"  # IDLE | KU_SEARCH | CONTROL
+        self.mode = "IDLE" 
         self.stop_event = threading.Event()
         self.ku_thread: Optional[threading.Thread] = None
         self.ctrl_thread: Optional[threading.Thread] = None
 
-        # UI queue (thread-safe)
         self.uiq: "queue.Queue[Callable[[], None]]" = queue.Queue()
 
-        # shared state
+        # estado
         self.lock = threading.Lock()
         self.height_cm = 0.0
         self.height_valid = False
 
-        self.h0_takeoff: Optional[float] = None  # baseline
-        self.sp_delta_cm = 100.0                 # Δ sobre h0
+        self.h0_takeoff: Optional[float] = None  # base
+        self.sp_delta_cm = 100.0                 # altura de referencia
         self.ref_abs_cm = 0.0
 
         self.error_cm = 0.0
         self.u_cmd = 0.0
         self.battery: Optional[int] = None
 
-        # sensor health
+        # comprobar estado
         self.last_good_height: Optional[float] = None
         self.last_good_time: Optional[float] = None
         self.takeoff_time: Optional[float] = None
 
         self.medf = MedianFilter(n=5)
 
-        # ZN outputs
+        # ZN salidas
         self.Ku: Optional[float] = None
         self.Tu: Optional[float] = None
 
@@ -264,7 +259,7 @@ class TelloAltitudeApp:
         self.r_log: Deque[float] = deque(maxlen=self.LOG_MAXLEN)
         self.u_log: Deque[float] = deque(maxlen=self.LOG_MAXLEN)
 
-        # métricas en vivo (desde último step)
+        # métricas en vivo 
         self.step_start_time: Optional[float] = None
         self.step_ref: Optional[float] = None
         self.mp_live: float = 0.0
@@ -276,7 +271,6 @@ class TelloAltitudeApp:
         self._ui_update()
         self._battery_poll()
 
-    # ---------- UI thread-safe ----------
     def _post_ui(self, fn: Callable[[], None]) -> None:
         self.uiq.put(fn)
 
@@ -292,7 +286,7 @@ class TelloAltitudeApp:
                 pass
         self.root.after(50, self._ui_pump)
 
-    # ---------- tello helpers ----------
+    # ---------- tello comandos ----------
     def _ensure_sdk_command(self) -> None:
         if self.tello is None:
             return
@@ -348,7 +342,7 @@ class TelloAltitudeApp:
 
         return self.medf.update(h_cm), True
 
-    # ---------- takeoff baseline ----------
+    # ---------- takeoff ----------
     def _capture_takeoff_baseline(self) -> bool:
         """
         Captura h0 (altura estabilizada post-takeoff).
@@ -373,7 +367,7 @@ class TelloAltitudeApp:
             self.ref_abs_cm = h0 + self.sp_delta_cm
         return True
 
-    # ---------- step metrics ----------
+    # ---------- metricas ----------
     def _mark_step(self, ref_abs: float) -> None:
         self.step_start_time = time.perf_counter()
         self.step_ref = float(ref_abs)
@@ -396,7 +390,7 @@ class TelloAltitudeApp:
         self.mp_live = compute_overshoot_percent(h, ref)
         self.ts_live = compute_settling_time(t, h, ref, band_ratio=0.02, hold_s=2.0)
 
-    # ---------- threads stop ----------
+    # ---------- parametros ----------
     def _stop_all_threads(self) -> None:
         self.stop_event.set()
         self.mode = "IDLE"
@@ -411,7 +405,7 @@ class TelloAltitudeApp:
 
         self.stop_event.clear()
 
-    # ---------------- GUI ----------------
+    # ---------------- INTERFAZ GRAFICA ----------------
     def _build_gui(self) -> None:
         style = ttk.Style()
         style.configure("Danger.TButton", foreground="red")
@@ -466,7 +460,7 @@ class TelloAltitudeApp:
 
         ttk.Separator(left).grid(row=11, column=0, sticky="ew", pady=6)
 
-        ttk.Label(left, text="Auto-tuning (Ku, Tu) - Relay").grid(row=12, column=0, sticky="w")
+        ttk.Label(left, text="(Ku, Tu)").grid(row=12, column=0, sticky="w")
         self.btn_ku = ttk.Button(left, text="Iniciar búsqueda Ku", command=self.start_ku_search, state="disabled")
         self.btn_ku.grid(row=13, column=0, sticky="ew", pady=2)
 
@@ -508,7 +502,7 @@ class TelloAltitudeApp:
         ttk.Separator(left).grid(row=23, column=0, sticky="ew", pady=6)
         ttk.Label(left, text="Telemetría + Métricas").grid(row=24, column=0, sticky="w")
 
-        self.lbl_tel = ttk.Label(left, text="h: — | e: — | u: — | bat: — | mode: IDLE")
+        self.lbl_tel = ttk.Label(left, text="h: — | e: — | u: — | bat: — ")
         self.lbl_tel.grid(row=25, column=0, sticky="w")
 
         self.lbl_metrics = ttk.Label(left, text="Mp: — % | Ts: — s")
@@ -531,8 +525,8 @@ class TelloAltitudeApp:
         (self.line_r,) = self.ax.plot([], [], "--", label="Referencia abs")
 
         self.ax2 = self.ax.twinx()
-        (self.line_u,) = self.ax2.plot([], [], label="u (vz cmd)")
-        self.ax2.set_ylabel("u [cmd]")
+        (self.line_u,) = self.ax2.plot([], [], label="Control PID")
+        self.ax2.set_ylabel("PID [cmd]")
 
         lines = [self.line_h, self.line_r, self.line_u]
         labels = [l.get_label() for l in lines]
@@ -541,7 +535,7 @@ class TelloAltitudeApp:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.right)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-    # ---------------- Connection ----------------
+    # ---------------- Comprobar conexiones ----------------
     def connect(self) -> None:
         if self.connected:
             return
@@ -582,7 +576,7 @@ class TelloAltitudeApp:
         except Exception as e:
             messagebox.showerror("Error", f"Reconectar falló: {e}")
 
-    # ---------------- Flight ----------------
+    # ---------------- Vuelo ----------------
     def takeoff(self) -> None:
         if not self.connected:
             messagebox.showwarning("Aviso", "Primero conecta.")
@@ -645,7 +639,7 @@ class TelloAltitudeApp:
         except Exception as e:
             messagebox.showerror("Error", f"Emergencia falló: {e}")
 
-    # ---------------- Setpoint (Δ) ----------------
+    # ---------------- Setpoint  ----------------
     def _on_sp_change(self, _: str) -> None:
         val = clip(float(self.sp_var.get()), self.SP_DELTA_MIN, self.SP_DELTA_MAX)
         with self.lock:
@@ -671,7 +665,7 @@ class TelloAltitudeApp:
         except Exception:
             messagebox.showerror("Error", "Setpoint inválido.")
 
-    # ---------------- Auto-tuning Ku/Tu (Relay) ----------------
+    # ---------------- Ku/Tu ----------------
     def start_ku_search(self) -> None:
         if not (self.connected and self.flying):
             messagebox.showwarning("Aviso", "Conecta y despega primero.")
@@ -918,7 +912,7 @@ class TelloAltitudeApp:
             error = ref - h
             u, _ = self.pid.update(error, tnow)
 
-            # deadband mínima
+            
             if abs(error) < 0.8:
                 u = 0.0
 
@@ -985,7 +979,7 @@ class TelloAltitudeApp:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar CSV: {e}")
 
-    # ---------------- UI update ----------------
+    # -------------------------------
     def _ui_update(self) -> None:
         self._compute_live_metrics()
 
@@ -1069,7 +1063,7 @@ def main() -> None:
             pass
         root.destroy()
 
-    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.protocol("Eliminar ventana", on_close)
     root.mainloop()
 
 
