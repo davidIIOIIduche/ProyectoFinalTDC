@@ -1,18 +1,4 @@
 
-"""
-Sistema de Control de Altura para DJI Tello (Control Moderno) - Arquitectura en Cascada
-- Bucle externo (Python): PID de POSICIÓN -> genera v_ref (cmd vertical) y la manda por send_rc_control
-- Bucle interno (Firmware Tello): Control de VELOCIDAD (IMU) -> ajusta PWM motores
-
-Cumple guía:
-- Instrumentación: get_height / get_current_state + send_rc_control (sin move_up ni set_speed)
-- Ziegler–Nichols lazo cerrado: Ki=Kd=0, buscar Ku y Tu, calcular PID
-- Anti-windup
-- Validación con gráficas en tiempo real
-- Lógica de seguridad (setpoint seguro, saturación, emergencia)
-- HMI (Tkinter + Matplotlib embebido)
-"""
-
 # filepath: tello_altitude_hmi.py
 
 from __future__ import annotations
